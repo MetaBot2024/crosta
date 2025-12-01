@@ -4,6 +4,7 @@ import OpenAI from "openai";
 
 const app = express();
 
+// CORS para que tu web pueda llamar al backend
 app.use(
   cors({
     origin: "*",
@@ -18,90 +19,76 @@ const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// ===================== AGENDA MANUAL =====================
-// Fechas ya reservadas (formato YYYY-MM-DD)
-// Cuando cierres un evento, agrega la fecha aquí y vuelve a hacer deploy.
-const FECHAS_OCUPADAS = [
-  // "2025-01-10",
-  // "2025-01-15",
-  // "2026-01-02",
-];
-
-function estaFechaOcupada(fechaISO) {
-  if (!fechaISO) return false;
-  return FECHAS_OCUPADAS.includes(fechaISO.trim());
-}
-
-// ===================== PROMPT ESTRUCTURADO =====================
+// ===================== PROMPT CROSTA: SOLO INFO Y CONTACTO =====================
 const CROSTA_PROMPT = `
 Eres CROSTA, el asistente oficial de La Crosta (www.lacrosta.cl).
 
-TU TAREA PRINCIPAL:
-Entender lo que necesita el cliente, recomendar el mejor plan y devolver SIEMPRE
-un JSON estructurado (sin texto extra). El backend se encarga de los precios,
-descuentos y disponibilidad.
+TU ROL:
+- Entregar información clara y amigable sobre La Crosta, sus servicios y sus planes de pizzas napolitanas.
+- Ayudar al cliente a entender cómo funciona el servicio.
+- Responder dudas frecuentes (qué incluye, dónde atienden, tipo de eventos, etc.).
+- Invitar al cliente a contactar o completar los formularios en la página cuando quiera cotizar o contratar.
 
-PRECIOS OFICIALES (el modelo NO los calcula, solo etiqueta el plan):
-- Plan Básico -> 10.000 por persona.
-- Plan Plus   -> 12.000 por persona.
-- Plan Pro    -> 15.000 por persona.
+REGLAS CLAVE:
+1. NO HACES COTIZACIONES.
+   - No calcules totales.
+   - No multipliques personas x precio.
+   - No uses frases como "total a pagar", "cotización", "valor final", "te dejo una cotización".
+   - Si el cliente pide una cotización o precio total, responde algo como:
+     "La cotización final la puedes obtener completando el formulario en nuestra página. Yo puedo explicarte los planes y cómo funciona el servicio."
 
-DESCUENTO POR PAGO COMPLETO:
-Si el cliente indica que pagará el evento completo por adelantado / pago total / pago anticipado,
-debes marcar "pago_completo": true en el JSON. El backend aplicará un 10% de descuento al total.
-No calcules montos, solo marca el campo.
+2. INFORMACIÓN DESDE LA PÁGINA:
+   - Basa tus respuestas en la información típica que tendría una página de servicio de pizzas napolitanas para eventos:
+     - Planes (básico, plus, pro, etc.), si te los mencionan.
+     - Tipo de servicio (pizza napolitana para eventos, tenedor libre, show cooking, etc.).
+     - Que se atienden eventos como cumpleaños, empresas, colegios, matrimonios, etc.
+   - Si el cliente pide información que NO está clara o que podría depender de cambios (precios exactos, comunas muy específicas, políticas internas, etc.), responde:
+     "Esa información puede variar. Te recomiendo revisar directamente la página o escribirnos por el formulario de contacto para confirmarlo."
 
-FECHA Y HORA:
-- "fecha" debe ir SIEMPRE en formato YYYY-MM-DD (por ejemplo "2025-01-10").
-- "hora" puede ser texto libre (ej: "18:00", "19:30", "noche", etc.).
+3. PRECIOS:
+   - Puedes mencionar precios por persona SOLO si el cliente los menciona o si los tienes claros desde la web.
+   - NO calcules totales ni valores finales.
+   - Si el cliente insiste en valores exactos, dile:
+     "El detalle de la cotización y los valores finales se ve directamente a través de los formularios de la página o contacto con el equipo comercial."
 
-FORMATO EXACTO DEL JSON QUE DEBES DEVOLVER (SIN TEXTO ADICIONAL):
+4. CONTACTO Y FORMULARIOS:
+   - Si el cliente quiere reservar, contratar o avanzar con el servicio, SIEMPRE dirígelo a la página.
+   - Usa frases como:
+     - "Para avanzar con tu evento, te recomiendo completar el formulario del plan que prefieras en la página de La Crosta."
+     - "Si quieres una cotización formal, puedes hacerlo directamente desde los formularios de la web."
 
-{
-  "modo": "cotizacion" | "charla",
+   - No inventes URLs concretas si no las conoces. Puedes decir:
+     "Entra a www.lacrosta.cl y busca el formulario del plan que más se ajuste a tu evento."
 
-  "plan_recomendado": "Basico" | "Plus" | "Pro" | null,
-  "razon_plan": "explica por qué ese plan",
+5. DATOS DE CONTACTO:
+   - Puedes pedir de forma amable:
+     - nombre,
+     - tipo de evento,
+     - cantidad aproximada de personas,
+     - comuna o sector,
+     - fecha estimada,
+   - Pero solo para ayudar a orientar, NO para armar una cotización numérica.
+   - Luego sugiere:
+     "Con estos datos ya puedes completar el formulario en la web y el equipo te responderá con una cotización formal."
 
-  "personas": número o null,
-  "evento": "texto" o null,
-  "fecha": "texto (YYYY-MM-DD)" o null,
-  "hora": "texto" o null,
-  "comuna": "texto" o null,
-  "nombre": "texto" o null,
+6. TONO:
+   - Cercano, amable, claro, profesional.
+   - Responde siempre en español.
+   - No uses tecnicismos innecesarios, habla como un asesor de eventos simpático y confiable.
 
-  "pago_completo": true | false | null,
-
-  "preguntas_pendientes": "texto con las preguntas que falten por responder" o "",
-  "respuesta_libre": "texto para conversar con el usuario (sin precios)"
-}
-
-REGLAS IMPORTANTES:
-- Si el usuario pide precio, cotización, valor total, etc. -> "modo": "cotizacion".
-- Si solo conversa ("hola", "gracias", etc.) -> "modo": "charla" y rellena solo "respuesta_libre".
-- NO escribas montos numéricos de precios ni totales en "respuesta_libre".
-- Si falta algún dato (personas, fecha, comuna, etc.), déjalo en null y explícalo en "preguntas_pendientes".
-- Si el usuario dice explícitamente que pagará todo el evento al contado / pago total / pago anticipado,
-  entonces "pago_completo": true.
-- Si no se habla de forma de pago, usa "pago_completo": null.
-
-INDICACIÓN IMPORTANTE SOBRE DISPONIBILIDAD:
-- Tú NO accedes al calendario real. El backend revisa una agenda interna.
-- Tú solo debes devolver correctamente "fecha" para que el backend pueda revisar disponibilidad.
-
-INDICACIÓN SOBRE CIERRE:
-- Al final, en "respuesta_libre" o "preguntas_pendientes" NO debes mencionar WhatsApp.
-- La acción para avanzar debe ser dirigir al cliente a completar el formulario del plan recomendado
-  en la página web (por ejemplo "Formulario Plan Plus en la web de La Crosta").
-- El backend se encargará de mostrar el llamado a la acción hacia el formulario.
+En resumen:
+- Informas, explicas, orientas.
+- NO cotizas, NO calculas totales.
+- Siempre terminas invitando a usar la web y sus formularios para cotizar y reservar.
 `;
+// ===================== FIN PROMPT =====================
 
-// ===================== RUTA DE PRUEBA =====================
+// Ruta simple de prueba
 app.get("/", (req, res) => {
   res.send("CROSTA backend OK");
 });
 
-// ===================== ENDPOINT PRINCIPAL =====================
+// Endpoint principal del chat
 app.post("/chat", async (req, res) => {
   try {
     console.log("📩 /chat recibido:", req.body);
@@ -121,10 +108,10 @@ app.post("/chat", async (req, res) => {
 
     console.log("✅ Respuesta OpenAI RAW:", JSON.stringify(response, null, 2));
 
-    // Extraer texto bruto (el JSON)
-    let rawText = "";
+    let answer = "Lo siento, no pude generar una respuesta ahora.";
+
     if (response.output_text) {
-      rawText = response.output_text;
+      answer = response.output_text;
     } else if (
       response.output &&
       response.output[0] &&
@@ -133,167 +120,12 @@ app.post("/chat", async (req, res) => {
       response.output[0].content[0].text &&
       response.output[0].content[0].text.value
     ) {
-      rawText = response.output[0].content[0].text.value;
+      answer = response.output[0].content[0].text.value;
     }
 
-    console.log("🧾 Texto bruto del modelo:", rawText);
+    console.log("📝 Enviando al cliente:", answer);
 
-    let reply = "Lo siento, no pude generar una respuesta ahora.";
-
-    try {
-      const data = JSON.parse(rawText);
-
-      if (data.modo === "charla") {
-        // Solo conversación
-        reply = data.respuesta_libre || reply;
-      } else if (data.modo === "cotizacion") {
-        // ===================== PRECIOS FIJOS =====================
-        const plan = data.plan_recomendado; // Basico | Plus | Pro | null
-        const personas = Number(data.personas) || null;
-
-        const preciosPorPlan = {
-          Basico: 10000,
-          Plus: 12000,
-          Pro: 15000,
-        };
-
-        let precioPersona = plan ? preciosPorPlan[plan] : null;
-        let subtotal = null;
-
-        if (personas && precioPersona) {
-          subtotal = personas * precioPersona;
-        }
-
-        // ===================== DESCUENTO POR PAGO COMPLETO =====================
-        const pagoCompleto = data.pago_completo === true;
-        let descuento = 0;
-        let totalFinal = subtotal;
-
-        if (pagoCompleto && subtotal) {
-          descuento = Math.round(subtotal * 0.1); // 10%
-          totalFinal = subtotal - descuento;
-        }
-
-        // ===================== DISPONIBILIDAD (AGENDA MANUAL) =====================
-        let disponibilidadTexto = "";
-        if (data.fecha) {
-          const ocupada = estaFechaOcupada(data.fecha);
-          if (ocupada) {
-            disponibilidadTexto =
-              "⚠️ Importante: esa fecha ya aparece como reservada en nuestra agenda interna. Podemos revisar otro horario o día para tu evento.";
-          } else {
-            disponibilidadTexto =
-              "✅ En nuestra agenda manual esa fecha no aparece bloqueada. De todas formas, la reserva queda sujeta a confirmación final.";
-          }
-        }
-
-        // ===================== ARMAR COTIZACIÓN =====================
-        let partes = [];
-
-        partes.push("COTIZACIÓN LA CROSTA 🍕");
-        partes.push("");
-
-        if (data.nombre) partes.push(`Cliente: ${data.nombre}`);
-        if (data.evento) partes.push(`Evento: ${data.evento}`);
-        if (data.fecha) partes.push(`Fecha: ${data.fecha}`);
-        if (data.comuna) partes.push(`Comuna: ${data.comuna}`);
-        if (personas) partes.push(`Personas: ${personas}`);
-        if (data.hora) partes.push(`Hora estimada: ${data.hora}`);
-
-        partes.push("");
-
-        if (plan) {
-          partes.push(`Plan recomendado: Plan ${plan}`);
-        }
-        if (data.razon_plan) {
-          partes.push(data.razon_plan);
-          partes.push("");
-        }
-
-        if (precioPersona) {
-          partes.push(
-            `Precio por persona: $${precioPersona.toLocaleString("es-CL")}`
-          );
-        } else {
-          partes.push(
-            "Precio por persona: (no definido, falta confirmar el plan)."
-          );
-        }
-
-        if (subtotal) {
-          partes.push(
-            `Subtotal: ${personas} personas x $${precioPersona.toLocaleString(
-              "es-CL"
-            )} = $${subtotal.toLocaleString("es-CL")}`
-          );
-        }
-
-        if (pagoCompleto && subtotal) {
-          partes.push(
-            `Descuento por pago total anticipado (10%): -$${descuento.toLocaleString(
-              "es-CL"
-            )}`
-          );
-        }
-
-        if (totalFinal) {
-          partes.push(
-            `Total a pagar: $${totalFinal.toLocaleString("es-CL")}`
-          );
-        } else {
-          partes.push(
-            "Total a pagar: no se pudo calcular porque faltan datos (personas o plan)."
-          );
-        }
-
-        partes.push("");
-
-        if (pagoCompleto) {
-          partes.push(
-            "Forma de pago considerada: Pago total anticipado (contado), con 10% de descuento aplicado."
-          );
-        } else {
-          partes.push(
-            "Si deseas pagar el evento completo por adelantado, puedes acceder a un 10% de descuento sobre el total."
-          );
-        }
-
-        if (disponibilidadTexto) {
-          partes.push("");
-          partes.push(disponibilidadTexto);
-        }
-
-        partes.push("");
-
-        if (data.preguntas_pendientes) {
-          partes.push(data.preguntas_pendientes);
-          partes.push("");
-        }
-
-        // 👉 CIERRE: dirigir al formulario según el plan
-        if (plan) {
-          partes.push(
-            `Para avanzar con la reserva, completa el formulario del Plan ${plan} en la página web de La Crosta.`
-          );
-        } else {
-          partes.push(
-            "Para avanzar con la reserva, completa el formulario del plan que más se ajuste a tu evento en la página web de La Crosta."
-          );
-        }
-
-        reply = partes.join("\n");
-      } else {
-        // Si el modelo devuelve algo raro, devolvemos el texto tal cual
-        reply = rawText || reply;
-      }
-    } catch (e) {
-      console.error("❌ Error parseando JSON del modelo:", e);
-      reply = rawText || reply;
-    }
-
-    console.log("📝 Enviando al cliente:", reply);
-
-    return res.json({ reply });
+    return res.json({ reply: answer });
   } catch (err) {
     console.error(
       "❌ ERROR GENERAL CROSTA:",
