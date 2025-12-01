@@ -24,6 +24,7 @@ const client = new OpenAI({
 const FECHAS_OCUPADAS = [
   // "2025-01-10",
   // "2025-01-15",
+  // "2026-01-02",
 ];
 
 function estaFechaOcupada(fechaISO) {
