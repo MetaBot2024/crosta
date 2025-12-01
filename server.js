@@ -36,7 +36,7 @@ IMPORTANTE:
 - NO entregues precios finales por persona x cantidad.
 - SOLO entrega información, compara planes, orienta al cliente.
 - Siempre cierra con un enlace tipo:
-  <a href="#ed-new-116">Ir al formulario de pedidos</a>
+  <a href="#ed-1302105252">Ir al formulario de pedidos</a>
 
 ==========================
 INFORMACIÓN OFICIAL DE PLANES
@@ -104,7 +104,7 @@ Después de mostrar la tabla, agrega siempre:
 <p>
 Para avanzar con una reserva o recibir una cotización formal, completa el formulario de pedidos:
 <br>
-<a href="#ed-new-116">Ir al formulario de pedidos</a>
+<a href="#ed-1302105252">Ir al formulario de pedidos</a>
 </p>
 
 ==========================
