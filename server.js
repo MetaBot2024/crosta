@@ -4,7 +4,6 @@ import OpenAI from "openai";
 
 const app = express();
 
-// CORS
 app.use(
   cors({
     origin: "*",
@@ -19,105 +18,55 @@ const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// ===================== PROMPT CROSTA MEGA-BLINDADO =====================
+// ===================== PROMPT ESTRUCTURADO =====================
 const CROSTA_PROMPT = `
-Eres CROSTA, el asistente oficial de La Crosta (www.lacrosta.cl), experto en ventas, cotizaciones y atención al cliente para eventos con pizzas napolitanas.
+Eres CROSTA, el asistente oficial de La Crosta (www.lacrosta.cl).
 
-TU MISIÓN:
-Guiar al cliente desde la primera pregunta hasta una cotización completa y lista para enviar por WhatsApp.
+TU TAREA ES ESTRUCTURAR LA INFORMACIÓN, NO CALCULAR PRECIOS.
+El cálculo de precios se hace SIEMPRE en el backend, con valores fijos.
 
-SIEMPRE debes:
-- Capturar los datos del cliente.
-- Recomendar plan.
-- Calcular el total.
-- Crear una cotización formal.
-- Preparar mensaje de WhatsApp.
-- NO INVENTAR NUNCA precios ni condiciones.
+PRECIOS OFICIALES (NO LOS CALCULES, SOLO ETIQUETA EL PLAN):
+- Plan Básico -> 10.000 por persona.
+- Plan Plus   -> 12.000 por persona.
+- Plan Pro    -> 15.000 por persona.
 
-==================== INFORMACIÓN OFICIAL ====================
+Debes entender lo que pide el usuario y responder SIEMPRE con un JSON VÁLIDO,
+sin texto adicional, con este formato EXACTO:
 
-PLAN BÁSICO — **$10.000 p/p**
-PLAN PLUS — **$12.000 p/p**
-PLAN PRO — **$15.000 p/p**
+{
+  "modo": "cotizacion" | "charla",
 
-Estos precios son FIJOS, OFICIALES Y OBLIGATORIOS.  
-NO se ajustan por comuna, distancia, región, día, hora, ni ningún factor.  
-NO existen tarifas diferenciadas por Maipú, Puente Alto, Las Condes, etc.  
-NO existen descuentos automáticos.
+  "plan_recomendado": "Basico" | "Plus" | "Pro" | null,
+  "razon_plan": "explica por qué ese plan",
 
-==================== BLOQUEO ESTRICTO DE PRECIOS ====================
+  "personas": número o null,
+  "evento": "texto" o null,
+  "fecha": "texto" o null,
+  "hora": "texto" o null,
+  "comuna": "texto" o null,
+  "nombre": "texto" o null,
 
-ANTES de entregar cualquier precio debes validar internamente:
+  "preguntas_pendientes": "texto con las preguntas que falten por responder" o "",
+  "respuesta_libre": "texto para conversar con el usuario (sin precios)"
+}
 
-- Plan Básico → **$10.000** por persona (nunca otra cifra).
-- Plan Plus → **$12.000** por persona.
-- Plan Pro → **$15.000** por persona.
+REGLAS:
+- Si el usuario está claramente pidiendo una COTIZACIÓN (precio, total, etc.),
+  usa "modo": "cotizacion".
+- Si el usuario solo conversa ("hola", "gracias", etc.), usa "modo": "charla"
+  y rellena solo "respuesta_libre".
+- NUNCA pongas números de precios ni totales en "respuesta_libre".
+  Los precios SIEMPRE los calculará el backend.
+- Si no entiendes algún dato, deja ese campo como null y explícalo en "preguntas_pendientes".
+- El JSON debe ser válido. No agregues comentarios, ni texto fuera del JSON.
+`;
 
-SI EL MODELO INTENTA USAR OTRO VALOR:
-DEBES DETENERTE Y AUTOCORREGIRTE:
-Debes responder:
-
-"Corrección: Los precios oficiales son fijos. El valor correcto del Plan {plan} es $XX.000 por persona."
-
-Luego entregar la cotización correcta.
-
-Prohibido estrictamente:
-- Usar $9.500, $9.000, $7.500, $8.000, $9.990 o cualquier otro monto.
-- Ajustar precios según comuna.
-- Aplicar descuentos sin autorización humana.
-- Inventar planes nuevos o valores nuevos.
-
-Si el cliente menciona otro valor, responde:
-"Los precios oficiales de La Crosta son fijos. Te entrego el valor correcto."
-
-==================== CÁLCULO AUTOMÁTICO ====================
-
-Valor total = precio por persona × cantidad de personas.
-
-Ejemplo:
-20 personas + Plan Plus = 20 × 12.000 = $240.000.
-
-==================== DATOS NECESARIOS PARA UNA COTIZACIÓN ====================
-
-Debes pedir (si falta alguno):
-- Fecha
-- Cant personas
-- Comuna
-- Tipo de evento
-- Hora
-- Nombre
-
-==================== FORMATO DE COTIZACIÓN ====================
-
-COTIZACIÓN LA CROSTA
-
-Cliente: {nombre}
-Evento: {evento}
-Fecha: {fecha}
-Comuna: {comuna}
-Personas: {cantidad}
-Hora: {hora}
-
-PLAN: {plan}
-Precio por persona: ${precio}
-TOTAL: ${total}
-
-==================== MENSAJE PARA WHATSAPP ====================
-
-"Hola, soy {nombre}. Quiero avanzar con la reserva del Plan {plan} para {cantidad} personas el {fecha} en {comuna}, a las {hora}. ¿Podrían confirmar disponibilidad?"
-
-Incluye link wa.me con ese texto.
-
-TONO:
-Amable, profesional, rápido, claro.`;
- // ===================== FIN PROMPT =====================
-
-// RUTA DE PRUEBA
+// ===================== RUTA DE PRUEBA =====================
 app.get("/", (req, res) => {
   res.send("CROSTA backend OK");
 });
 
-// ENDPOINT PRINCIPAL
+// ===================== ENDPOINT PRINCIPAL =====================
 app.post("/chat", async (req, res) => {
   try {
     console.log("📩 /chat recibido:", req.body);
@@ -128,6 +77,7 @@ app.post("/chat", async (req, res) => {
       return res.status(400).json({ error: "Formato inválido" });
     }
 
+    // Añadimos el prompt de sistema
     const input = [{ role: "system", content: CROSTA_PROMPT }, ...messages];
 
     const response = await client.responses.create({
@@ -135,23 +85,123 @@ app.post("/chat", async (req, res) => {
       input,
     });
 
-    console.log("✅ Respuesta OpenAI:", JSON.stringify(response, null, 2));
+    console.log("✅ Respuesta OpenAI RAW:", JSON.stringify(response, null, 2));
 
-    let answer = "Lo siento, no pude generar respuesta.";
-
+    // Extraemos el texto bruto (que DEBE ser JSON)
+    let rawText = "";
     if (response.output_text) {
-      answer = response.output_text;
+      rawText = response.output_text;
     } else if (
-      response.output?.[0]?.content?.[0]?.text?.value
+      response.output &&
+      response.output[0] &&
+      response.output[0].content &&
+      response.output[0].content[0] &&
+      response.output[0].content[0].text &&
+      response.output[0].content[0].text.value
     ) {
-      answer = response.output[0].content[0].text.value;
+      rawText = response.output[0].content[0].text.value;
     }
 
-    console.log("📝 Enviando al cliente:", answer);
+    console.log("🧾 Texto bruto del modelo:", rawText);
 
-    return res.json({ reply: answer });
+    let reply = "Lo siento, no pude generar una respuesta ahora.";
+
+    try {
+      const data = JSON.parse(rawText);
+
+      // Si el modelo decide que es conversación normal:
+      if (data.modo === "charla") {
+        reply = data.respuesta_libre || reply;
+      } else if (data.modo === "cotizacion") {
+        // ===================== AQUÍ CONTROLAMOS PRECIOS =====================
+        const plan = data.plan_recomendado; // Basico | Plus | Pro
+        const personas = Number(data.personas) || null;
+
+        // Valores FIJOS
+        const preciosPorPlan = {
+          Basico: 10000,
+          Plus: 12000,
+          Pro: 15000,
+        };
+
+        let precioPersona = plan ? preciosPorPlan[plan] : null;
+        let total = null;
+
+        if (personas && precioPersona) {
+          total = personas * precioPersona;
+        }
+
+        // Armamos cotización segura
+        let partes = [];
+
+        partes.push("COTIZACIÓN LA CROSTA 🍕");
+        partes.push("");
+
+        if (data.nombre) partes.push(`Cliente: ${data.nombre}`);
+        if (data.evento) partes.push(`Evento: ${data.evento}`);
+        if (data.fecha) partes.push(`Fecha: ${data.fecha}`);
+        if (data.comuna) partes.push(`Comuna: ${data.comuna}`);
+        if (personas) partes.push(`Personas: ${personas}`);
+        if (data.hora) partes.push(`Hora estimada: ${data.hora}`);
+
+        partes.push("");
+
+        if (plan) {
+          partes.push(`Plan recomendado: Plan ${plan}`);
+        }
+        if (data.razon_plan) {
+          partes.push(data.razon_plan);
+          partes.push("");
+        }
+
+        if (precioPersona) {
+          partes.push(
+            `Precio por persona: $${precioPersona.toLocaleString("es-CL")}`
+          );
+        } else {
+          partes.push(
+            "Precio por persona: (no definido, falta confirmar el plan)."
+          );
+        }
+
+        if (total) {
+          partes.push(
+            `Total estimado: ${personas} personas x $${precioPersona.toLocaleString(
+              "es-CL"
+            )} = $${total.toLocaleString("es-CL")}`
+          );
+        } else {
+          partes.push(
+            "Total estimado: no se pudo calcular porque faltan datos (personas o plan)."
+          );
+        }
+
+        partes.push("");
+
+        if (data.preguntas_pendientes) {
+          partes.push(data.preguntas_pendientes);
+          partes.push("");
+        }
+
+        partes.push(
+          "Si quieres, puedo dejarte un mensaje listo para enviar por WhatsApp con todos los datos de tu evento."
+        );
+
+        reply = partes.join("\n");
+      } else {
+        // Si el modelo manda algo raro, devolvemos el texto bruto
+        reply = rawText;
+      }
+    } catch (e) {
+      console.error("❌ Error parseando JSON del modelo:", e);
+      reply = rawText || reply;
+    }
+
+    console.log("📝 Enviando al cliente:", reply);
+
+    return res.json({ reply });
   } catch (err) {
-    console.error("❌ ERROR:", err.response?.data || err.message);
+    console.error("❌ ERROR GENERAL CROSTA:", err.response?.data || err.message);
     return res.status(500).json({ error: "Error con CROSTA" });
   }
 });
