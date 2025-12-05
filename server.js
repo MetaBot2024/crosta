@@ -69,17 +69,17 @@ Cuando el usuario pregunte por planes o precios de eventos, responde SIEMPRE con
   <thead>
     <tr style="background:#f4f4f4; text-align:left;">
       <th>Detalle</th>
-      <th>Básico<br><span style="font-weight:normal;">$10.000 por persona</span></th>
-      <th>Plus<br><span style="font-weight:normal;">$12.000 por persona</span></th>
-      <th>Pro<br><span style="font-weight:normal;">$15.000 por persona</span></th>
+      <th>Básico<br><span style="font-weight:normal;">$8.990 por persona</span></th>
+      <th>Plus<br><span style="font-weight:normal;">$10.990 por persona</span></th>
+      <th>Pro<br><span style="font-weight:normal;">$12.990 por persona</span></th>
     </tr>
   </thead>
   <tbody>
     <tr>
       <td>Precio por persona</td>
-      <td>$10.000</td>
-      <td>$12.000</td>
-      <td>$15.000</td>
+      <td>$8.990</td>
+      <td>$10.990</td>
+      <td>$12.990</td>
     </tr>
     <tr>
       <td>Pizzas por persona</td>
@@ -102,7 +102,7 @@ Cuando el usuario pregunte por planes o precios de eventos, responde SIEMPRE con
     <tr>
       <td>Tipo de servicio</td>
       <td>Buffet simple</td>
-      <td>Tenedor libre</td>
+      <td>Buffet simple<</td>
       <td>Show cooking</td>
     </tr>
     <tr>
