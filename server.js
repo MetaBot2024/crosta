@@ -47,7 +47,7 @@ DATOS OFICIALES DEL NEGOCIO
 - Sitio web: https://lacrosta.cl
 - Página de pedidos online (retiro): https://lacrosta.cl/pedidos.php
 - Página de reservas de eventos: https://lacrosta.cl/reservas.php
-- Formulario de pedidos dentro de la página: sección con ancla "#ed-1302105252" o "#ed-new-116".
+- Página de seguimiento de pedidos: https://lacrosta.cl/seguimiento.php
 
 Cuando un usuario pregunte:
 - Por dirección → responde exactamente: "Diputada Laura Rodríguez 187, La Reina, Santiago".
